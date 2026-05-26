@@ -1,15 +1,31 @@
+"""Prediction endpoint.
+
+Flow:
+  1. Rate limit
+  2. Load model
+  3. HOLD balance (Redis-only; DB untouched)
+  4. Run inference
+     ├─ Success → CONFIRM hold (atomic DB debit)
+     └─ Failure → RELEASE hold (user not charged, idempotency cleared)
+  5. Persist Prediction row
+  6. Return result + balance + cert + disclaimer
+"""
+import logging
+import uuid
+from typing import Any, Dict, Optional
+
+import httpx
 from fastapi import APIRouter, Depends, Header, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
-import uuid, httpx, logging
-from app.db.session import get_db
-from app.db.models import User, Model, Prediction, PerformanceCert
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.auth import get_current_user
 from app.config import settings
+from app.core.balance import confirm_hold, hold_balance, release_hold
 from app.core.errors import Errors, raise_error
-from app.core.ratelimit import enforce_rate_limit, PREDICT_LIMITER
-from app.core.balance import debit_balance
+from app.core.ratelimit import PREDICT_LIMITER, enforce_rate_limit
+from app.db.models import Model, PerformanceCert, Prediction, User
+from app.db.session import get_db
 
 router = APIRouter()
 logger = logging.getLogger("echo.predict")
@@ -26,42 +42,60 @@ async def predict(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Rate limit per user
+    # 1. Per-user rate limit
     await enforce_rate_limit(f"user:{user.id}", PREDICT_LIMITER)
-    
+
+    # 2. Load model
     model = await db.get(Model, body.model)
     if not model or not model.is_listed:
         raise_error(Errors.MODEL_NOT_FOUND, hint=f"Model '{body.model}'")
-    
-    # Atomic balance debit BEFORE inference (avoids charging on inference failure later)
-    # Use prediction_id as idempotency key fallback
+
     pred_id = f"pred_{uuid.uuid4().hex[:12]}"
     idem = idempotency_key or pred_id
-    
-    new_balance = await debit_balance(user, model.price_per_call_cents, db, idempotency_key=idem)
-    
-    # Call inference service
-    output = None
+
+    # 3. HOLD balance — DB untouched until inference succeeds
+    hold_id, _projected_free = await hold_balance(
+        user,
+        cents=model.price_per_call_cents,
+        db=db,
+        idempotency_key=idem,
+        ttl_seconds=60,
+    )
+
+    # 4. Inference (with refund-on-failure)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.post(
                 f"{settings.models_endpoint}/infer",
-                json={"model": model.id, "version": model.version, "inputs": body.inputs or {}},
+                json={
+                    "model": model.id,
+                    "version": model.version,
+                    "inputs": body.inputs or {},
+                },
             )
             r.raise_for_status()
             output = r.json()
     except Exception as e:
-        # Refund on inference failure
-        logger.exception("inference_failed", extra={"user_id": str(user.id), "model": model.id, "error": str(e)})
-        # Reverse charge
-        from sqlalchemy import update
-        await db.execute(
-            update(User).where(User.id == user.id).values(balance_usd_cents=User.balance_usd_cents + model.price_per_call_cents)
+        # Release hold — user is NOT charged
+        await release_hold(user.id, hold_id, idempotency_key=idem)
+        logger.exception(
+            "inference_failed",
+            extra={
+                "user_id": str(user.id),
+                "model": model.id,
+                "error": str(e),
+                "request_id": getattr(request.state, "request_id", None),
+            },
         )
-        await db.commit()
-        raise_error(Errors.INTERNAL, hint="Inference temporarily unavailable. Charge refunded.")
-    
-    # Load active cert
+        raise_error(
+            Errors.INTERNAL,
+            hint="Inference temporarily unavailable. Your balance was not charged.",
+        )
+
+    # 5. CONFIRM hold — atomic DB debit
+    new_balance = await confirm_hold(user, hold_id, db)
+
+    # 6. Load active cert (best-effort)
     cert_data = None
     if model.active_cert_id:
         cert = await db.get(PerformanceCert, model.active_cert_id)
@@ -80,21 +114,31 @@ async def predict(
                 "echo_capital_wallet": settings.echo_capital_wallet,
                 "reproducibility_kit": cert.reproducibility_kit_url,
             }
-    
+
+    # 7. Persist prediction row
     pred = Prediction(
-        id=pred_id, user_id=user.id, model_id=model.id,
-        inputs=body.inputs, output=output,
+        id=pred_id,
+        user_id=user.id,
+        model_id=model.id,
+        inputs=body.inputs,
+        output=output,
         cost_cents=model.price_per_call_cents,
         cert_id=model.active_cert_id,
     )
     db.add(pred)
     await db.commit()
-    
-    logger.info("prediction_served", extra={
-        "user_id": str(user.id), "model": model.id, "pred_id": pred_id,
-        "cost_cents": model.price_per_call_cents,
-    })
-    
+
+    logger.info(
+        "prediction_served",
+        extra={
+            "user_id": str(user.id),
+            "model": model.id,
+            "pred_id": pred_id,
+            "cost_cents": model.price_per_call_cents,
+            "request_id": getattr(request.state, "request_id", None),
+        },
+    )
+
     return {
         "id": pred_id,
         "model": model.id,
