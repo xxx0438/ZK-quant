@@ -153,3 +153,13 @@ async def predict(
             "Use at your own risk."
         ),
     }
+
+# 8. Write revenue split (marketplace v4.2)
+    from app.services.payout_settlement import record_revenue_split
+
+    await record_revenue_split(
+        db=db,
+        prediction_id=pred_id,
+        model=model,
+        gross_cents=model.price_per_call_cents,
+    )
