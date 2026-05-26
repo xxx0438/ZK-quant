@@ -1,0 +1,33 @@
+name: Weekly Settlement
+
+on:
+  schedule:
+    - cron: "0 0 * * 1"  # Monday 00:00 UTC
+  workflow_dispatch:
+
+jobs:
+  settle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - working-directory: apps/api
+        run: pip install -e .
+      - working-directory: apps/api
+        run: python -m apps.payouts.weekly_settlement
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+          USDC_ADDRESS_BASE: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+          SETTLEMENT_PRIVATE_KEY: ${{ secrets.SETTLEMENT_PRIVATE_KEY }}
+          ENVIRONMENT: production
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          COINBASE_COMMERCE_WEBHOOK_SECRET: ${{ secrets.COINBASE_COMMERCE_WEBHOOK_SECRET }}
+          ALCHEMY_WEBHOOK_SECRET: ${{ secrets.ALCHEMY_WEBHOOK_SECRET }}
+          ECHO_TREASURY_ADDRESS: ${{ secrets.ECHO_TREASURY_ADDRESS }}
+          ECHO_CAPITAL_WALLET: ${{ secrets.ECHO_CAPITAL_WALLET }}
+          ALLOWED_HOSTS: "api.echo.ai"
+          CORS_ORIGINS: "https://echo.ai"
