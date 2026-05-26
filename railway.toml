@@ -1,0 +1,37 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/api/Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[[services]]
+name = "api"
+internalPort = 8000
+
+[[services]]
+name = "models"
+internalPort = 8001
+dockerfilePath = "apps/models/Dockerfile"
+
+[[services]]
+name = "enclave"
+internalPort = 9000
+dockerfilePath = "apps/enclave/Dockerfile"
+
+[[services]]
+name = "forward-test"
+dockerfilePath = "apps/forward-test/Dockerfile"
+
+[[services]]
+name = "capital"
+dockerfilePath = "apps/capital/Dockerfile"
+
+[[plugins]]
+name = "postgresql"
+
+[[plugins]]
+name = "redis"
