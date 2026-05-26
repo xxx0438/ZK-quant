@@ -163,3 +163,24 @@ async def predict(
         model=model,
         gross_cents=model.price_per_call_cents,
     )
+
+# 9. Publish to Redis for downstream consumers (Allocator, attribution, etc.)
+    try:
+        import json
+        from app.core.ratelimit import get_redis
+
+        signal_payload = {
+            "signal_id": pred_id,
+            "model_id": model.id,
+            "model_version": model.version,
+            "prediction": output,
+            "live_sharpe_30d": model.live_sharpe_30d,
+            "live_sharpe_90d": model.live_sharpe_90d,
+            "tested_capacity_usd": model.tested_capacity_usd,
+            "cert_id": model.active_cert_id,
+            "ts": pred.created_at.isoformat() if pred.created_at else None,
+        }
+        await get_redis().publish("echo:signals", json.dumps(signal_payload, default=str))
+    except Exception:
+        logger.exception("signal_publish_failed", extra={"pred_id": pred_id})
+        # Non-fatal: client still gets prediction back
