@@ -1,0 +1,27 @@
+app = "echo-allocator"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENVIRONMENT = "production"
+  LOG_LEVEL = "INFO"
+  AUM_USD = "100000"
+  KELLY_FRACTION = "0.25"
+  MAX_POSITION_PCT_OF_AUM = "0.10"
+  ENABLED_ASSETS = "BTC,ETH,SOL"
+  HYPERLIQUID_USE_TESTNET = "false"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+[processes]
+  app = "alembic upgrade head && python -m app.main"
+
+# No public HTTP — allocator is a background worker
+# Use `fly secrets set` for:
+#   DATABASE_URL, REDIS_URL,
+#   HYPERLIQUID_WALLET_ADDRESS, HYPERLIQUID_PRIVATE_KEY
