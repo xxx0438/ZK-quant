@@ -1,0 +1,72 @@
+{
+  "info": {
+    "name": "Echo Protocol API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://api.echo.ai" },
+    { "key": "api_key", "value": "echo_sk_live_REPLACE_ME" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/health"
+      }
+    },
+    {
+      "name": "Auth - Signup",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/v1/auth/signup",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"you@example.com\", \"password\": \"securepassword123\"}"
+        }
+      }
+    },
+    {
+      "name": "Predict - Whale Netflow",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/v1/predict",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{api_key}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"model\": \"whale-netflow-eth\"}"
+        }
+      }
+    },
+    {
+      "name": "Capital - Overview",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/v1/capital"
+      }
+    },
+    {
+      "name": "Models - List",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/v1/models"
+      }
+    },
+    {
+      "name": "Billing - Topup",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/v1/billing/topup",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{api_key}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "body": {"mode": "raw", "raw": "{\"amount_usd\": 100}"}
+      }
+    }
+  ]
+}
