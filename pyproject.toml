@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "echo-quant"
+version = "0.4.3"
+description = "Echo Protocol Quant SDK — build, test, and ship quant models."
+requires-python = ">=3.11"
+authors = [{ name = "Echo Protocol", email = "dev@echo.ai" }]
+license = { text = "MIT" }
+readme = "README.md"
+
+dependencies = [
+    "pydantic>=2.6,<3.0",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "click>=8.1",
+    "rich>=13.7",                  # nice CLI output
+    "httpx>=0.27",
+    "onnx>=1.16",
+    "onnxruntime>=1.18",
+    "skl2onnx>=1.16",              # sklearn → ONNX
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+sklearn = ["scikit-learn>=1.4"]
+torch = ["torch>=2.2", "onnx>=1.16"]
+xgboost = ["xgboost>=2.0", "onnxmltools>=1.12"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.3"]
+
+[project.scripts]
+echo-cli = "echo_quant.cli.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["echo_quant"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
